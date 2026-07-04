@@ -31,7 +31,7 @@ export default function Login() {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.switchAuthContainer} onPress={() => router.push('/signup')}>
-          <Text style={styles.switchAuthText}>Don't have an account? <Text style={styles.switchAuthAccent}>Create Account</Text></Text>
+          <Text style={styles.switchAuthText}>Don{"'"}t have an account? <Text style={styles.switchAuthAccent}>Create Account</Text></Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -1,106 +1,417 @@
 // src/app/home.tsx
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useState, useEffect } from 'react';
+import {
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  Platform,
+  Dimensions,
+} from 'react-native';
+
+const { width } = Dimensions.get('window');
 
 export default function Home() {
   const router = useRouter();
-  const [startLoc, setStartLoc] = useState('Bole Airport');
-  const [destLoc, setDestLoc] = useState('Piassa');
+  
+  // Theme state
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
-  const recentTrips = [
-    { id: '1', from: 'Bole', to: 'Piassa', distance: '7.2 km', time: '18 mins', price: '35 ETB' },
-    { id: '2', from: 'Kebena', to: 'Meskel Square', distance: '5.4 km', time: '25 mins', price: '10 ETB' },
+  // Shift state
+  const [isShiftActive, setIsShiftActive] = useState<boolean>(true);
+  const [shiftSeconds, setShiftSeconds] = useState<number>(9900); // starts at 2h 45m
+
+  // Format seconds to hh:mm:ss
+  const formatTime = (totalSeconds: number) => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${hrs.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
+  };
+
+  // Shift Timer logic
+  useEffect(() => {
+    let timer: any = null;
+    if (isShiftActive) {
+      timer = setInterval(() => {
+        setShiftSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isShiftActive]);
+
+  const toggleShift = () => {
+    if (isShiftActive) {
+      setIsShiftActive(false);
+    } else {
+      setIsShiftActive(true);
+      setShiftSeconds(0);
+    }
+  };
+
+  const themeStyles = isDarkMode ? darkTheme : lightTheme;
+
+  // Mock driver stats
+  const stats = [
+    { label: 'PASSENGERS', value: '142', emoji: '👥' },
+    { label: 'DISTANCE', value: '38.5 km', emoji: '🛣️' },
+    { label: 'SAFETY RATING', value: '4.9 ⭐', emoji: '🛡️' },
+    { label: 'FLEET RANK', value: '#4 / 25', emoji: '🏆' },
+  ];
+
+  // Mock vehicle health metrics
+  const checklist = [
+    { item: 'Brakes & Air Pressure', status: 'Pass', color: '#10B981' },
+    { item: 'Engine & Fluids', status: 'Pass', color: '#10B981' },
+    { item: 'Fuel Level', status: '82% Full', color: '#2F80ED' },
+    { item: 'Tires & Alignment', status: 'Pass', color: '#10B981' },
   ];
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
+    <SafeAreaView style={[styles.safeContainer, themeStyles.bg]}>
       <ScrollView contentContainerStyle={styles.mainScroll} showsVerticalScrollIndicator={false}>
         
-        {/* Header matches Screen 04 */}
+        {/* Profile / Header */}
         <View style={styles.homeHeader}>
           <View style={styles.profileRow}>
-            <View style={styles.avatarMock}><Text style={{color: '#FFF', fontWeight: '700'}}>JC</Text></View>
-            <View style={{marginLeft: 12}}>
-              <Text style={styles.profileName}>Hi, John Cena!</Text>
-              <Text style={styles.profileLocation}>📍 Addis Ababa, Ethiopia</Text>
+            <View style={styles.avatarMock}>
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>JC</Text>
+            </View>
+            <View style={{ marginLeft: 12 }}>
+              <Text style={[styles.profileName, themeStyles.text]}>John Cena</Text>
+              <Text style={styles.profileLocation}>🪪 ID: #DRV-1209 • Route 12 Driver</Text>
             </View>
           </View>
-        </View>
-
-        {/* Slogan */}
-        <View style={styles.sloganBlock}>
-          <Text style={styles.sloganBigText}>Plan. <Text style={{color: '#2F80ED'}}>Ride.</Text> Arrive.</Text>
-          <Text style={styles.sloganSmallText}>Track public transport in real time.</Text>
-        </View>
-
-        {/* Travel Planner Box */}
-        <View style={styles.plannerBox}>
-          <View style={styles.plannerInputColumn}>
-            <TextInput style={styles.plannerInput} value={startLoc} onChangeText={setStartLoc} placeholder="Your location" />
-            <View style={styles.plannerDivider} />
-            <TextInput style={styles.plannerInput} value={destLoc} onChangeText={setDestLoc} placeholder="Where are you going?" />
-          </View>
-          <TouchableOpacity style={styles.plannerButton} onPress={() => router.push('/tracker')}>
-            <Text style={styles.plannerButtonText}>Plan My Trip</Text>
+          <TouchableOpacity 
+            style={[styles.themeToggle, themeStyles.toggleBg]} 
+            onPress={() => setIsDarkMode(!isDarkMode)}
+          >
+            <Text style={{ fontSize: 16 }}>{isDarkMode ? '☀️' : '🌙'}</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.sectionHeading}>Recent Trips</Text>
-        {recentTrips.map(trip => (
-          <TouchableOpacity key={trip.id} style={styles.tripCard} onPress={() => router.push('/tracker')}>
-            <View style={styles.tripIconBox}><Text style={{fontSize: 16}}>🚌</Text></View>
-            <View style={{flex: 1}}>
-              <Text style={styles.tripRouteName}>{trip.from} ➔ {trip.to}</Text>
-              <Text style={styles.tripMetricsText}>{trip.distance} • {trip.time} • {trip.price}</Text>
+        {/* Live Shift Controller Panel */}
+        <View style={[styles.shiftCard, themeStyles.cardBg, themeStyles.border]}>
+          <View style={styles.shiftHeader}>
+            <View style={styles.shiftBadgeRow}>
+              <View style={[styles.pulseDot, { backgroundColor: isShiftActive ? '#10B981' : '#6B7280' }]} />
+              <Text style={[styles.shiftStatusLabel, { color: isShiftActive ? '#10B981' : '#6B7280' }]}>
+                {isShiftActive ? 'ACTIVE DUTY SHIFT' : 'SHIFT OFFLINE'}
+              </Text>
             </View>
-            <Text style={{color: '#9CA3AF'}}>➔</Text>
+            <Text style={[styles.shiftBusDetails, themeStyles.textSec]}>Vehicle: Bus 12-A (ET-3-1120)</Text>
+          </View>
+
+          <Text style={[styles.shiftClock, themeStyles.text]}>
+            {isShiftActive ? formatTime(shiftSeconds) : '--h --m --s'}
+          </Text>
+
+          <TouchableOpacity 
+            style={[styles.shiftButton, isShiftActive ? styles.shiftButtonActive : styles.shiftButtonInactive]}
+            onPress={toggleShift}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.shiftButtonText}>
+              {isShiftActive ? '🛑 Clock Out / End Shift' : '🚀 Clock In / Start Shift'}
+            </Text>
           </TouchableOpacity>
-        ))}
+        </View>
+
+        {/* Fleet Metrics Grid */}
+        <Text style={[styles.sectionHeading, themeStyles.text]}>Shift Performance Metrics</Text>
+        <View style={styles.metricsGrid}>
+          {stats.map((stat) => (
+            <View key={stat.label} style={[styles.metricCard, themeStyles.cardBg, themeStyles.border]}>
+              <Text style={styles.metricEmoji}>{stat.emoji}</Text>
+              <Text style={[styles.metricValue, themeStyles.text]}>{stat.value}</Text>
+              <Text style={styles.metricLabel}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Assigned Vehicle Logs */}
+        <Text style={[styles.sectionHeading, themeStyles.text]}>Pre-Trip Checklist & Vehicle Diagnostics</Text>
+        <View style={[styles.checklistCard, themeStyles.cardBg, themeStyles.border]}>
+          {checklist.map((check, idx) => (
+            <View key={check.item} style={[styles.checkRow, idx < checklist.length - 1 && styles.checkBorder]}>
+              <Text style={[styles.checkItemText, themeStyles.text]}>🔧 {check.item}</Text>
+              <View style={[styles.checkStatusBadge, { backgroundColor: check.color + '15' }]}>
+                <Text style={[styles.checkStatusText, { color: check.color }]}>{check.status}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Dispatch Bulletins */}
+        <Text style={[styles.sectionHeading, themeStyles.text]}>Dispatch Bulletins</Text>
+        <View style={[styles.bulletinCard, themeStyles.bulletinBg]}>
+          <Text style={styles.bulletinTitle}>⚠️ Road Alerts & Delay Warning</Text>
+          <Text style={styles.bulletinContent}>
+            Heavy traffic jam reported at the Piassa roundabout. Drivers on Route 12 are advised to divert via Churchill Road if spacing headway allows.
+          </Text>
+          <View style={styles.bulletinDivider} />
+          <Text style={styles.bulletinMeta}>Issued by: Command Center • 14 mins ago</Text>
+        </View>
+
       </ScrollView>
 
       {/* Global Tab Navigation */}
-      <View style={styles.navigationBarContainer}>
+      <View style={[styles.navigationBarContainer, themeStyles.cardBg, themeStyles.border]}>
         <TouchableOpacity style={styles.navigationTabItem} onPress={() => router.replace('/home')}>
-          <Text style={{fontSize: 20}}>🏠</Text>
-          <Text style={[styles.navigationTabText, {color: '#2F80ED'}]}>Home</Text>
+          <Text style={{ fontSize: 20 }}>🏠</Text>
+          <Text style={[styles.navigationTabText, { color: '#2F80ED' }]}>Home</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.navigationTabItem} onPress={() => router.replace('/tracker')}>
-          <Text style={{fontSize: 20}}>🛰️</Text>
-          <Text style={styles.navigationTabText}>Tracker</Text>
+          <Text style={{ fontSize: 20 }}>🛰️</Text>
+          <Text style={[styles.navigationTabText, themeStyles.textSec]}>Tracker</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.navigationTabItem} onPress={() => router.replace('/tickets')}>
-          <Text style={{fontSize: 20}}>🎟️</Text>
-          <Text style={styles.navigationTabText}>Tickets</Text>
+          <Text style={{ fontSize: 20 }}>🎟️</Text>
+          <Text style={[styles.navigationTabText, themeStyles.textSec]}>Tickets</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 }
 
+// Themes
+const lightTheme = {
+  bg: { backgroundColor: '#F9FAFB' },
+  cardBg: { backgroundColor: '#FFFFFF' },
+  toggleBg: { backgroundColor: '#E5E7EB' },
+  bulletinBg: { backgroundColor: '#FEF7E0' },
+  text: { color: '#1F2937' },
+  textSec: { color: '#6B7280' },
+  border: { borderColor: '#E5E7EB' },
+};
+
+const darkTheme = {
+  bg: { backgroundColor: '#111827' },
+  cardBg: { backgroundColor: '#1F2937' },
+  toggleBg: { backgroundColor: '#374151' },
+  bulletinBg: { backgroundColor: '#2E2A1A' },
+  text: { color: '#F9FAFB' },
+  textSec: { color: '#9CA3AF' },
+  border: { borderColor: '#374151' },
+};
+
 const styles = StyleSheet.create({
-  safeContainer: { flex: 1, backgroundColor: '#F9FAFB' },
-  mainScroll: { paddingHorizontal: 16, paddingTop: 40, paddingBottom: 80 },
-  homeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  profileRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarMock: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#2F80ED', justifyContent: 'center', alignItems: 'center' },
-  profileName: { fontSize: 16, fontWeight: '800', color: '#1F2937' },
-  profileLocation: { fontSize: 11, color: '#6B7280', marginTop: 2 },
-  sloganBlock: { marginBottom: 20 },
-  sloganBigText: { fontSize: 26, fontWeight: '900', color: '#1F2937', letterSpacing: -0.5 },
-  sloganSmallText: { fontSize: 12, color: '#6B7280', marginTop: 4 },
-  plannerBox: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, elevation: 3, marginBottom: 24 },
-  plannerInputColumn: { flex: 1 },
-  plannerInput: { height: 36, fontSize: 13, color: '#1F2937', fontWeight: '500' },
-  plannerDivider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 8 },
-  plannerButton: { backgroundColor: '#2F80ED', borderRadius: 12, height: 46, justifyContent: 'center', alignItems: 'center', marginTop: 12 },
-  plannerButtonText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  sectionHeading: { fontSize: 16, fontWeight: '800', color: '#1F2937', marginBottom: 12 },
-  tripCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 14, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#F3F4F6' },
-  tripIconBox: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#E8F0FE', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  tripRouteName: { fontSize: 14, fontWeight: '700', color: '#1F2937' },
-  tripMetricsText: { fontSize: 11, color: '#6B7280', marginTop: 3 },
-  navigationBarContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 68, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingBottom: 12 },
-  navigationTabItem: { alignItems: 'center' },
-  navigationTabText: { fontSize: 10, fontWeight: '600', marginTop: 2, color: '#9CA3AF' }
+  safeContainer: {
+    flex: 1,
+  },
+  mainScroll: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 20 : 40,
+    paddingBottom: 90,
+  },
+  homeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarMock: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2F80ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileName: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  profileLocation: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  themeToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shiftCard: {
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  shiftHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  shiftBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  shiftStatusLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  shiftBusDetails: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  shiftClock: {
+    fontSize: 28,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginVertical: 18,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.5,
+  },
+  shiftButton: {
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shiftButtonActive: {
+    backgroundColor: '#EF4444',
+  },
+  shiftButtonInactive: {
+    backgroundColor: '#10B981',
+  },
+  shiftButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 12,
+    letterSpacing: -0.2,
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 24,
+  },
+  metricCard: {
+    width: (width - 42) / 2,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  metricEmoji: {
+    fontSize: 20,
+    marginBottom: 6,
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  metricLabel: {
+    fontSize: 9,
+    color: '#9CA3AF',
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  checklistCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 24,
+    overflow: 'hidden',
+  },
+  checkRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+  },
+  checkBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  checkItemText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  checkStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  checkStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  bulletinCard: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#FEF08A',
+    marginBottom: 16,
+  },
+  bulletinTitle: {
+    color: '#B06000',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  bulletinContent: {
+    color: '#713F12',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  bulletinDivider: {
+    height: 1,
+    backgroundColor: 'rgba(176, 96, 0, 0.1)',
+    marginVertical: 10,
+  },
+  bulletinMeta: {
+    color: '#A16207',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  navigationBarContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 68,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingBottom: 12,
+  },
+  navigationTabItem: {
+    alignItems: 'center',
+  },
+  navigationTabText: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
+  },
 });
