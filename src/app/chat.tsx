@@ -33,16 +33,16 @@ export default function Chat() {
 
   // Dispatch Messages State
   const [dispatchMessages, setDispatchMessages] = useState<Message[]>([
-    { id: 'd1', sender: 'Dispatch (Abebe)', text: 'Route 12 status check. Are you experiencing delays near Edna Mall?', isUser: false, timestamp: '10:14 AM' },
-    { id: 'd2', sender: 'Driver (You)', text: 'Edna Mall is clear. Moving smoothly towards Dembel now.', isUser: true, timestamp: '10:15 AM' },
-    { id: 'd3', sender: 'Dispatch (Selamawit)', text: 'Copy that. Churchill Road has minor congestion, keep headway spacing.', isUser: false, timestamp: '10:17 AM' },
+    { id: 'd1', sender: 'Dispatch (Kapila)', text: 'Route 138 status check. Are you experiencing delays near Maharagama junction?', isUser: false, timestamp: '10:14 AM' },
+    { id: 'd2', sender: 'Driver (You)', text: 'Maharagama junction is clear. Moving smoothly towards Nugegoda now.', isUser: true, timestamp: '10:15 AM' },
+    { id: 'd3', sender: 'Dispatch (Ruwan)', text: 'Copy that. High Level Road has minor congestion, keep headway spacing.', isUser: false, timestamp: '10:17 AM' },
   ]);
 
   // Passengers Feed Messages State
   const [passengerMessages, setPassengerMessages] = useState<Message[]>([
-    { id: 'p1', sender: 'Rider (Yared)', text: 'Hello driver, is this bus stopping at Piassa terminal?', isUser: false, timestamp: '10:09 AM' },
-    { id: 'p2', sender: 'Driver (You)', text: 'Yes, Piassa is the final stop on Route 12.', isUser: true, timestamp: '10:11 AM' },
-    { id: 'p3', sender: 'Rider (Selam)', text: 'Excuse me, I think I left my red pouch on one of the back seats.', isUser: false, timestamp: '10:20 AM' },
+    { id: 'p1', sender: 'Rider (Kasun)', text: 'Hello driver, is this bus stopping at Pettah terminal?', isUser: false, timestamp: '10:09 AM' },
+    { id: 'p2', sender: 'Driver (You)', text: 'Yes, Pettah is the final stop on Route 138.', isUser: true, timestamp: '10:11 AM' },
+    { id: 'p3', sender: 'Rider (Sanduni)', text: 'Excuse me, I think I left my red pouch on one of the back seats.', isUser: false, timestamp: '10:20 AM' },
   ]);
 
   const activeMessages = activeTab === 'dispatch' ? dispatchMessages : passengerMessages;

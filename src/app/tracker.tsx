@@ -10,32 +10,38 @@ import {
   ScrollView,
   Platform,
 } from 'react-native';
+import * as Location from 'expo-location';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 import GoogleMap, { BusMarker, LatLng } from '@/components/GoogleMap';
 
-// Addis Ababa Route Coordinates
-const BOLE_TO_PIASSA_COORDS: LatLng[] = [
-  { latitude: 9.0030, longitude: 38.7885 }, // Bole Airport
-  { latitude: 8.9995, longitude: 38.7850 },
-  { latitude: 8.9984, longitude: 38.7844 }, // Edna Mall
-  { latitude: 9.0010, longitude: 38.7780 },
-  { latitude: 9.0035, longitude: 38.7725 },
-  { latitude: 9.0062, longitude: 38.7675 }, // Dembel
-  { latitude: 9.0085, longitude: 38.7640 },
-  { latitude: 9.0105, longitude: 38.7618 }, // Meskel Square
-  { latitude: 9.0180, longitude: 38.7580 },
-  { latitude: 9.0240, longitude: 38.7550 },
-  { latitude: 9.0300, longitude: 38.7525 }, // Piassa
+// Colombo Route Coordinates
+// Route 138: Kottawa ➔ Pettah
+const COLOMBO_138_COORDS: LatLng[] = [
+  { latitude: 6.8402, longitude: 79.9654 }, // Kottawa
+  { latitude: 6.8450, longitude: 79.9480 }, // Pannipitiya
+  { latitude: 6.8511, longitude: 79.9212 }, // Maharagama
+  { latitude: 6.8732, longitude: 79.8974 }, // Nugegoda
+  { latitude: 6.8790, longitude: 79.8730 }, // Kirulapone
+  { latitude: 6.8920, longitude: 79.8660 }, // Havelock Road
+  { latitude: 6.9012, longitude: 79.8615 }, // Thummulla
+  { latitude: 6.9080, longitude: 79.8625 }, // Colombo University
+  { latitude: 6.9125, longitude: 79.8658 }, // Town Hall
+  { latitude: 6.9240, longitude: 79.8550 }, // Colombo Fort
+  { latitude: 6.9344, longitude: 79.8453 }, // Pettah
 ];
 
-const KEBENA_TO_MESKEL_COORDS: LatLng[] = [
-  { latitude: 9.0345, longitude: 38.7758 }, // Kebena
-  { latitude: 9.0310, longitude: 38.7810 },
-  { latitude: 9.0276, longitude: 38.7883 }, // Shola
-  { latitude: 9.0240, longitude: 38.7860 },
-  { latitude: 9.0194, longitude: 38.7831 }, // Haya Hulet
-  { latitude: 9.0150, longitude: 38.7750 },
-  { latitude: 9.0125, longitude: 38.7680 },
-  { latitude: 9.0105, longitude: 38.7618 }, // Meskel Square
+// Route 177: Kaduwela ➔ Kollupitiya
+const COLOMBO_177_COORDS: LatLng[] = [
+  { latitude: 6.9272, longitude: 79.9835 }, // Kaduwela
+  { latitude: 6.9140, longitude: 79.9720 }, // Pittugala
+  { latitude: 6.9043, longitude: 79.9614 }, // Malabe
+  { latitude: 6.9080, longitude: 79.9320 }, // Koswatta
+  { latitude: 6.8988, longitude: 79.9224 }, // Battaramulla
+  { latitude: 6.9090, longitude: 79.8950 }, // Rajagiriya
+  { latitude: 6.9140, longitude: 79.8780 }, // Borella
+  { latitude: 6.9125, longitude: 79.8658 }, // Town Hall
+  { latitude: 6.9120, longitude: 79.8507 }, // Kollupitiya
 ];
 
 // Helper to calculate distance in km using Haversine formula
@@ -56,8 +62,8 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 export default function Tracker() {
   const router = useRouter();
 
-  // State controls
-  const [selectedRouteId, setSelectedRouteId] = useState<'route-12' | 'route-4'>('route-12');
+  // Route & Settings states
+  const [selectedRouteId, setSelectedRouteId] = useState<'route-12' | 'route-4'>('route-12'); // route-12 maps to 138, route-4 maps to 177 in SL context
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [showTraffic, setShowTraffic] = useState<boolean>(true);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
@@ -65,33 +71,129 @@ export default function Tracker() {
   const [driverStatus, setDriverStatus] = useState<'Active' | 'Break' | 'Emergency'>('Active');
   const [broadcastMessage, setBroadcastMessage] = useState<string | null>(null);
   
+  // GPS hardware coordinates states
+  const [deviceCoords, setDeviceCoords] = useState<LatLng | null>(null);
+  const [hasLocationPermission, setHasLocationPermission] = useState<boolean | null>(null);
+
   // Custom alerts array placed on the map
   const [incidents, setIncidents] = useState<BusMarker[]>([]);
 
   // Simulation interval ref
   const simInterval = useRef<any>(null);
 
-  const currentRouteCoords = selectedRouteId === 'route-12' ? BOLE_TO_PIASSA_COORDS : KEBENA_TO_MESKEL_COORDS;
-  const currentPosition = currentRouteCoords[simIndex] || currentRouteCoords[0];
+  const currentRouteCoords = selectedRouteId === 'route-12' ? COLOMBO_138_COORDS : COLOMBO_177_COORDS;
+  
+  // Resolve driver's active position: Use real hardware GPS if not simulating, else simulate
+  const currentPosition = isSimulating 
+    ? (currentRouteCoords[simIndex] || currentRouteCoords[0])
+    : (deviceCoords || currentRouteCoords[0]);
 
-  // Spawn same-route buses dynamically based on selected route
+  // Request location permission on mount
+  useEffect(() => {
+    async function requestLocationPermission() {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          setHasLocationPermission(true);
+          const initialLoc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          setDeviceCoords({
+            latitude: initialLoc.coords.latitude,
+            longitude: initialLoc.coords.longitude,
+          });
+        } else {
+          setHasLocationPermission(false);
+        }
+      } catch (err) {
+        console.warn("Failed to request GPS permissions", err);
+      }
+    }
+    requestLocationPermission();
+  }, []);
+
+  // Track live GPS hardware changes when simulation is OFF
+  useEffect(() => {
+    let subscription: Location.LocationSubscription | null = null;
+
+    async function startWatching() {
+      if (hasLocationPermission && !isSimulating) {
+        subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 4000,
+            distanceInterval: 8,
+          },
+          (location) => {
+            setDeviceCoords({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            });
+          }
+        );
+      }
+    }
+
+    startWatching();
+
+    return () => {
+      if (subscription) {
+        subscription.remove();
+      }
+    };
+  }, [hasLocationPermission, isSimulating]);
+
+  // 5-Second Real-Time Location Sync to Firestore
+  useEffect(() => {
+    let syncTimer: any = null;
+
+    const syncLocationToFirebase = async () => {
+      if (!auth.currentUser) return; // Must be logged in
+
+      const driverBusPlate = selectedRouteId === 'route-12' ? 'WP ND-8842' : 'WP ND-1120';
+      const routeName = selectedRouteId === 'route-12' ? 'Route 138' : 'Route 177';
+      
+      try {
+        await setDoc(doc(db, "live_transit_locations", driverBusPlate), {
+          latitude: currentPosition.latitude,
+          longitude: currentPosition.longitude,
+          routeId: routeName,
+          driverId: auth.currentUser.uid,
+          lastUpdated: serverTimestamp(),
+          status: driverStatus,
+          isSimulating: isSimulating,
+        }, { merge: true });
+      } catch (err) {
+        console.warn("Firebase location sync error:", err);
+      }
+    };
+
+    // Run exactly every 5 seconds
+    syncTimer = setInterval(syncLocationToFirebase, 5000);
+
+    return () => {
+      if (syncTimer) clearInterval(syncTimer);
+    };
+  }, [currentPosition, selectedRouteId, driverStatus, isSimulating]);
+
+  // Spawn same-route buses dynamically based on selected route in Sri Lankan context
   const getSameRouteBuses = (): BusMarker[] => {
     if (selectedRouteId === 'route-12') {
       return [
         {
-          id: 'bus-12b',
-          coordinate: { latitude: 9.0105, longitude: 38.7618 }, // Ahead at Meskel Square
-          title: 'Bus 12B (Ahead)',
-          plate: 'ET-3-4832',
+          id: 'bus-138b',
+          coordinate: { latitude: 6.9125, longitude: 79.8658 }, // Ahead at Town Hall
+          title: 'Bus 138B (Ahead)',
+          plate: 'WP NA-4832',
           type: 'same-route',
           status: 'Active Duty',
           crowd: 'Medium',
         },
         {
-          id: 'bus-12c',
-          coordinate: { latitude: 9.0010, longitude: 38.7780 }, // Behind at Edna Mall area
-          title: 'Bus 12C (Behind)',
-          plate: 'ET-3-8821',
+          id: 'bus-138c',
+          coordinate: { latitude: 6.8450, longitude: 79.9480 }, // Behind at Pannipitiya
+          title: 'Bus 138C (Behind)',
+          plate: 'WP NB-8821',
           type: 'same-route',
           status: 'Active Duty',
           crowd: 'Low',
@@ -100,13 +202,22 @@ export default function Tracker() {
     } else {
       return [
         {
-          id: 'bus-4b',
-          coordinate: { latitude: 9.0276, longitude: 38.7883 }, // Ahead at Shola
-          title: 'Bus 4B (Ahead)',
-          plate: 'ET-3-9912',
+          id: 'bus-177b',
+          coordinate: { latitude: 6.9090, longitude: 79.8950 }, // Ahead at Rajagiriya
+          title: 'Bus 177B (Ahead)',
+          plate: 'WP ND-9912',
           type: 'same-route',
           status: 'Active Duty',
           crowd: 'High',
+        },
+        {
+          id: 'bus-177c',
+          coordinate: { latitude: 6.9272, longitude: 79.9835 }, // Behind at Kaduwela
+          title: 'Bus 177C (Behind)',
+          plate: 'WP NC-2089',
+          type: 'same-route',
+          status: 'Active Duty',
+          crowd: 'Low',
         },
       ];
     }
@@ -119,7 +230,7 @@ export default function Tracker() {
       id: 'driver-self',
       coordinate: currentPosition,
       title: 'My Bus (You)',
-      plate: 'ET-3-1120',
+      plate: selectedRouteId === 'route-12' ? 'WP ND-8842' : 'WP ND-1120',
       type: 'self',
       status: driverStatus === 'Active' ? 'Active Duty' : driverStatus === 'Break' ? 'On Break' : 'Emergency Stop',
       crowd: 'Medium',
@@ -142,12 +253,12 @@ export default function Tracker() {
         bus.coordinate.longitude
       );
 
-      // Determine spacing warnings (e.g. if buses are closer than 0.6 km)
-      if (dist < 0.6) {
+      // Determine spacing warnings (e.g. if buses are closer than 0.7 km)
+      if (dist < 0.7) {
         warning = true;
       }
 
-      const minutes = Math.round(dist * 2.5); // Mock travel time gap (approx 2.5 mins per km)
+      const minutes = Math.round(dist * 3.5); // Travel time gap estimation (approx 3.5 mins per km in Colombo traffic)
       const label = `${dist.toFixed(1)} km (${minutes}m gap)`;
 
       if (bus.title.includes('Ahead')) {
@@ -187,15 +298,13 @@ export default function Tracker() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSimulating, selectedRouteId]);
 
-
-
   // Handle Alert Broadcast
   const handleBroadcast = (type: string) => {
     const newIncident: BusMarker = {
       id: `incident-${incidents.length + 1}`,
       coordinate: {
-        latitude: currentPosition.latitude + 0.0005, // Offset slightly
-        longitude: currentPosition.longitude + 0.0005,
+        latitude: currentPosition.latitude + 0.0003, // Offset slightly
+        longitude: currentPosition.longitude + 0.0003,
       },
       title: `${type} Alert`,
       plate: 'Broadcasted',
@@ -220,7 +329,9 @@ export default function Tracker() {
           </TouchableOpacity>
           <View style={styles.titleWrapper}>
             <Text style={[styles.screenHeading, themeStyles.text]}>Fleet Hub</Text>
-            <Text style={styles.screenSubtitle}>Real-time Spacing & Alerts</Text>
+            <Text style={styles.screenSubtitle}>
+              {selectedRouteId === 'route-12' ? 'Route 138: Kottawa - Pettah' : 'Route 177: Kaduwela - Kollupitiya'}
+            </Text>
           </View>
           <TouchableOpacity 
             style={[styles.themeToggle, themeStyles.themeToggleBg]} 
@@ -236,6 +347,17 @@ export default function Tracker() {
         <View style={styles.toastBanner}>
           <Text style={styles.toastBannerText}>{broadcastMessage}</Text>
           <Text style={styles.toastBannerSub}>Alert pinned to route map & sent to fleet</Text>
+        </View>
+      )}
+
+      {/* GPS Location Tracker Banner */}
+      {!isSimulating && (
+        <View style={[styles.gpsBanner, hasLocationPermission ? styles.gpsSuccess : styles.gpsWarning]}>
+          <Text style={[styles.gpsBannerText, hasLocationPermission ? { color: '#047857' } : { color: '#B91C1C' }]}>
+            {hasLocationPermission 
+              ? `🛰️ Live GPS Active: Lat ${currentPosition.latitude.toFixed(4)}, Lng ${currentPosition.longitude.toFixed(4)}`
+              : '⚠️ GPS Permissions Denied: Using Colombo Route Default Center'}
+          </Text>
         </View>
       )}
 
@@ -263,18 +385,21 @@ export default function Tracker() {
 
           <TouchableOpacity
             style={[styles.hudButton, themeStyles.cardBg, isSimulating && styles.hudButtonActive]}
-            onPress={() => setIsSimulating(!isSimulating)}
+            onPress={() => {
+              setIsSimulating(!isSimulating);
+              setSimIndex(0);
+            }}
             activeOpacity={0.8}
           >
-            <Text style={styles.hudButtonText}>🚗</Text>
+            <Text style={styles.hudButtonText}>{isSimulating ? '🛰️' : '🚗'}</Text>
             <Text style={[styles.hudButtonLabel, themeStyles.text]}>
-              {isSimulating ? 'Stop Sim' : 'Start Sim'}
+              {isSimulating ? 'Live GPS' : 'Start Sim'}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Bottom Sheet Dashboard: Glassmorphic styled overlays */}
+      {/* Bottom Sheet Dashboard */}
       <View style={[styles.bottomDashboard, themeStyles.cardBg, themeStyles.headerBorder]}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.bottomScroll}>
           
@@ -313,8 +438,8 @@ export default function Tracker() {
               </View>
             </View>
 
-            <View style={{ width: 140 }}>
-              <Text style={[styles.sectionLabel, themeStyles.textSec]}>ACTIVE ROUTE</Text>
+            <View style={{ width: 155 }}>
+              <Text style={[styles.sectionLabel, themeStyles.textSec]}>COLOMBO COMMUTER ROUTE</Text>
               <View style={styles.routePillRow}>
                 <TouchableOpacity
                   style={[
@@ -328,7 +453,7 @@ export default function Tracker() {
                   }}
                 >
                   <Text style={[styles.routePillText, selectedRouteId === 'route-12' && styles.routePillTextActive]}>
-                    Route 12
+                    Route 138
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -343,7 +468,7 @@ export default function Tracker() {
                   }}
                 >
                   <Text style={[styles.routePillText, selectedRouteId === 'route-4' && styles.routePillTextActive]}>
-                    Route 4
+                    Route 177
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -353,10 +478,10 @@ export default function Tracker() {
           {/* Spacing and Fleet Spacing Warning Overlay */}
           <View style={[styles.spacingHub, themeStyles.sectionBg]}>
             <View style={styles.spacingHeader}>
-              <Text style={[styles.spacingTitle, themeStyles.text]}>🔄 Fleet Spacing HUD</Text>
+              <Text style={[styles.spacingTitle, themeStyles.text]}>🔄 Colombo Spacing HUD</Text>
               {spacing.warning && (
                 <View style={styles.bunchingWarning}>
-                  <Text style={styles.bunchingWarningText}>⚠️ Spacing Warning</Text>
+                  <Text style={styles.bunchingWarningText}>⚠️ Bunching Risk</Text>
                 </View>
               )}
             </View>
@@ -378,14 +503,14 @@ export default function Tracker() {
             </View>
             {spacing.warning && (
               <Text style={styles.spacingGuidanceText}>
-                💡 Fleet recommendation: Slow down slightly to maintain headway spacing.
+                💡 Colombo Hub Instruction: Adjust speed to maintain optimal passenger spacing interval.
               </Text>
             )}
           </View>
 
           {/* Quick Broadcast Alert actions */}
           <Text style={[styles.sectionLabel, themeStyles.textSec, { marginTop: 16 }]}>
-            BROADCAST ALERT TO ROUTE
+            BROADCAST TRAFFIC ALERT
           </Text>
           <View style={styles.broadcastGrid}>
             {[
@@ -429,7 +554,7 @@ export default function Tracker() {
 }
 
 // Light Theme Palettes
-const lightTheme = StyleSheet.create({
+const lightTheme = {
   bg: { backgroundColor: '#F9FAFB' },
   cardBg: { backgroundColor: '#FFFFFF' },
   sectionBg: { backgroundColor: '#F3F4F6' },
@@ -437,10 +562,10 @@ const lightTheme = StyleSheet.create({
   textSec: { color: '#6B7280' },
   headerBorder: { borderBottomColor: '#E5E7EB', borderTopColor: '#E5E7EB' },
   themeToggleBg: { backgroundColor: '#F3F4F6' },
-});
+};
 
 // Dark Theme Palettes
-const darkTheme = StyleSheet.create({
+const darkTheme = {
   bg: { backgroundColor: '#111827' },
   cardBg: { backgroundColor: '#1F2937' },
   sectionBg: { backgroundColor: '#374151' },
@@ -448,7 +573,7 @@ const darkTheme = StyleSheet.create({
   textSec: { color: '#9CA3AF' },
   headerBorder: { borderBottomColor: '#374151', borderTopColor: '#374151' },
   themeToggleBg: { backgroundColor: '#374151' },
-});
+};
 
 const styles = StyleSheet.create({
   safeContainer: {
@@ -519,6 +644,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 2,
     fontWeight: '600',
+  },
+  gpsBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  gpsSuccess: {
+    backgroundColor: '#D1FAE5',
+  },
+  gpsWarning: {
+    backgroundColor: '#FEE2E2',
+  },
+  gpsBannerText: {
+    fontSize: 10.5,
+    fontWeight: '800',
   },
   mapContainer: {
     flex: 1,
