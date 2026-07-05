@@ -1,30 +1,54 @@
 // src/app/login.tsx
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, SafeAreaView, Platform } from 'react-native';
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function Login() {
   const router = useRouter();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Auto-redirect if session already exists
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.replace('/home');
+      }
+    };
+    checkSession();
+  }, [router]);
+
+  const showCustomAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      alert(`${title}: ${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in both email and password.');
+      showCustomAlert('Error', 'Please fill in both email and password.');
       return;
     }
 
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
       router.replace('/home');
     } catch (error: any) {
       console.error(error);
-      Alert.alert('Login Error', error.message || 'An error occurred during login.');
+      showCustomAlert('Login Error', error.message || 'An error occurred during login.');
     } finally {
       setLoading(false);
     }
@@ -34,12 +58,12 @@ export default function Login() {
     <SafeAreaView style={styles.safeContainer}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Driver Portal</Text>
-          <Text style={styles.subtitle}>Sign in to access your dashboard</Text>
+          <Text style={styles.title}>NTC Driver Portal</Text>
+          <Text style={styles.subtitle}>Sri Lanka Transit Management Sign-in</Text>
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email Address</Text>
           <TextInput
             style={styles.input}
             placeholder="driver@smarttransit.lk"
@@ -52,7 +76,7 @@ export default function Login() {
           <Text style={styles.label}>Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter your password"
+            placeholder="Enter your security password"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -62,12 +86,12 @@ export default function Login() {
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.buttonText}>Login</Text>
+              <Text style={styles.buttonText}>Sign In</Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.linkButton} onPress={() => router.push('/signup')}>
-            <Text style={styles.linkText}>Don&apos;t have an account? Register</Text>
+            <Text style={styles.linkText}>Don&apos;t have an NTC Driver account? Register</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -89,23 +113,27 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 26,
+    fontWeight: '900',
     color: '#1F2937',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
     marginTop: 8,
+    fontWeight: '600',
   },
   form: {
     gap: 8,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#4B5563',
     marginTop: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   input: {
     backgroundColor: '#FFF',

@@ -1,83 +1,88 @@
 // src/lib/passengerLocationListener.ts
-// This is a template utility for the Passenger App to listen to live bus locations.
-// Copy this into your Passenger App project when you build it.
+// Reusable template utility for the Passenger App to listen to live bus locations.
+// Copy this file into your Passenger App project when you build it.
 
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase'; // Ensure your passenger app also has Firebase initialized
+import { supabase } from './supabase'; // Ensure your passenger app also has Supabase initialized
 
 export interface TransitLocation {
-  id: string; // Bus Plate Number
+  bus_plate: string;
+  driver_id: string;
+  route_number: string;
   latitude: number;
   longitude: number;
-  routeId: string;
-  driverId: string;
-  lastUpdated: any; // Firestore Timestamp
-  status: string;
-  isSimulating: boolean;
+  status: 'Active' | 'Break' | 'Emergency';
+  is_simulating: boolean;
+  updated_at: string;
 }
 
 /**
- * Listens for real-time location updates of buses on a specific route.
+ * Listens to real-time location updates of buses on a specific route using Supabase Realtime.
  *
- * @param routeId - The route to listen to (e.g., 'Route 138').
- * @param callback - Function called whenever the data updates. Receives an array of active bus locations.
- * @returns An unsubscribe function to clean up the listener when the component unmounts.
+ * @param routeNumber - The Sri Lankan route number to track (e.g., '138').
+ * @param callback - Callback triggered when a location is created or updated.
+ * @returns An unsubscribe function to clean up the channel listener.
  */
-export function listenToRouteLocations(routeId: string, callback: (locations: TransitLocation[]) => void) {
-  // Query all active buses currently operating on the specified route
-  const q = query(
-    collection(db, 'live_transit_locations'),
-    where('routeId', '==', routeId)
-  );
-
-  // Subscribe to real-time updates
-  const unsubscribe = onSnapshot(q, (querySnapshot) => {
-    const locations: TransitLocation[] = [];
-    querySnapshot.forEach((doc) => {
-      // Map Firestore document data to our interface
-      const data = doc.data();
-      locations.push({
-        id: doc.id,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        routeId: data.routeId,
-        driverId: data.driverId,
-        lastUpdated: data.lastUpdated,
-        status: data.status,
-        isSimulating: data.isSimulating,
-      });
+export function listenToLiveRouteLocations(
+  routeNumber: string,
+  callback: (location: TransitLocation) => void
+) {
+  // Subscribe to public.live_transit_locations updates matching the route number filter
+  const channel = supabase
+    .channel(`live-transit-locations-${routeNumber}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*', // Listen to INSERT, UPDATE, DELETE
+        schema: 'public',
+        table: 'live_transit_locations',
+        filter: `route_number=eq.${routeNumber}`,
+      },
+      (payload) => {
+        // payload.new contains the updated row
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          callback(payload.new as TransitLocation);
+        }
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log(`Subscribed to real-time updates for Route ${routeNumber}`);
+      }
     });
 
-    // Fire callback to update the Passenger UI map
-    callback(locations);
-  }, (error) => {
-    console.error("Passenger App Error: Failed to listen to live transit locations:", error);
-  });
-
-  return unsubscribe;
+  // Return function to unsubscribe
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
-/* 
+/*
  * =========================================================
  * REACT HOOK EXAMPLE FOR THE PASSENGER APP:
  * =========================================================
- * 
+ *
  * import { useEffect, useState } from 'react';
- * import { listenToRouteLocations, TransitLocation } from '@/lib/passengerLocationListener';
- * 
- * export function useLiveBuses(routeId: string) {
- *   const [buses, setBuses] = useState<TransitLocation[]>([]);
- * 
+ * import { listenToLiveRouteLocations, TransitLocation } from '@/lib/passengerLocationListener';
+ *
+ * export function useLiveRouteBuses(routeNumber: string) {
+ *   const [buses, setBuses] = useState<{ [plate: string]: TransitLocation }>({});
+ *
  *   useEffect(() => {
- *     // Start listening when the component mounts
- *     const unsubscribe = listenToRouteLocations(routeId, (updatedBuses) => {
- *       setBuses(updatedBuses);
+ *     const unsubscribe = listenToLiveRouteLocations(routeNumber, (updatedBus) => {
+ *       setBuses((prev) => ({
+ *         ...prev,
+ *         [updatedBus.bus_plate]: updatedBus,
+ *       }));
  *     });
- * 
- *     // Stop listening when the component unmounts
+ *
  *     return () => unsubscribe();
- *   }, [routeId]);
- * 
- *   return buses;
+ *   }, [routeNumber]);
+ *
+ *   // Returns an array of active bus locations
+ *   return Object.values(buses).filter(
+ *     (bus) =>
+ *       // Only display buses active in the last 1 minute
+ *       new Date().getTime() - new Date(bus.updated_at).getTime() < 60000
+ *   );
  * }
  */
