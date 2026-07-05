@@ -11,8 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
 import GoogleMap, { BusMarker, LatLng } from '@/components/GoogleMap';
 
 // Colombo Route Coordinates
@@ -143,33 +142,41 @@ export default function Tracker() {
     };
   }, [hasLocationPermission, isSimulating]);
 
-  // 5-Second Real-Time Location Sync to Firestore
+  // 5-Second Real-Time Location Sync to Supabase
   useEffect(() => {
     let syncTimer: any = null;
 
-    const syncLocationToFirebase = async () => {
-      if (!auth.currentUser) return; // Must be logged in
+    const syncLocationToSupabase = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return; // Must be logged in
 
       const driverBusPlate = selectedRouteId === 'route-12' ? 'WP ND-8842' : 'WP ND-1120';
-      const routeName = selectedRouteId === 'route-12' ? 'Route 138' : 'Route 177';
+      const routeNumber = selectedRouteId === 'route-12' ? '138' : '177';
       
       try {
-        await setDoc(doc(db, "live_transit_locations", driverBusPlate), {
-          latitude: currentPosition.latitude,
-          longitude: currentPosition.longitude,
-          routeId: routeName,
-          driverId: auth.currentUser.uid,
-          lastUpdated: serverTimestamp(),
-          status: driverStatus,
-          isSimulating: isSimulating,
-        }, { merge: true });
+        const { error } = await supabase
+          .from('live_transit_locations')
+          .upsert({
+            bus_plate: driverBusPlate,
+            driver_id: session.user.id,
+            route_number: routeNumber,
+            latitude: currentPosition.latitude,
+            longitude: currentPosition.longitude,
+            status: driverStatus,
+            is_simulating: isSimulating,
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) {
+          console.warn("Supabase location sync error:", error.message);
+        }
       } catch (err) {
-        console.warn("Firebase location sync error:", err);
+        console.warn("Supabase location sync failed:", err);
       }
     };
 
     // Run exactly every 5 seconds
-    syncTimer = setInterval(syncLocationToFirebase, 5000);
+    syncTimer = setInterval(syncLocationToSupabase, 5000);
 
     return () => {
       if (syncTimer) clearInterval(syncTimer);
@@ -223,8 +230,74 @@ export default function Tracker() {
     }
   };
 
+  // Predefined bus halts with passengers waiting/tracking this bus
+  const getPassengerHalts = (): BusMarker[] => {
+    if (selectedRouteId === 'route-12') {
+      return [
+        {
+          id: 'halt-maharagama',
+          coordinate: { latitude: 6.8511, longitude: 79.9212 },
+          title: 'Maharagama Junction Halt',
+          plate: 'Route 138 Stop',
+          type: 'passenger-halt',
+          crowd: '7',
+          status: 'Pettah (5), Town Hall (2)',
+        },
+        {
+          id: 'halt-nugegoda',
+          coordinate: { latitude: 6.8732, longitude: 79.8974 },
+          title: 'Nugegoda Supercenter Halt',
+          plate: 'Route 138 Stop',
+          type: 'passenger-halt',
+          crowd: '4',
+          status: 'Pettah (4)',
+        },
+        {
+          id: 'halt-kirulapone',
+          coordinate: { latitude: 6.8790, longitude: 79.8730 },
+          title: 'Kirulapone Market Halt',
+          plate: 'Route 138 Stop',
+          type: 'passenger-halt',
+          crowd: '3',
+          status: 'Colombo Fort (2), Pettah (1)',
+        },
+      ];
+    } else {
+      return [
+        {
+          id: 'halt-malabe',
+          coordinate: { latitude: 6.9043, longitude: 79.9614 },
+          title: 'Malabe Junction Halt',
+          plate: 'Route 177 Stop',
+          type: 'passenger-halt',
+          crowd: '8',
+          status: 'Kollupitiya (6), Town Hall (2)',
+        },
+        {
+          id: 'halt-battaramulla',
+          coordinate: { latitude: 6.8988, longitude: 79.9224 },
+          title: 'Battaramulla Depot Halt',
+          plate: 'Route 177 Stop',
+          type: 'passenger-halt',
+          crowd: '5',
+          status: 'Kollupitiya (5)',
+        },
+        {
+          id: 'halt-rajagiriya',
+          coordinate: { latitude: 6.9090, longitude: 79.8950 },
+          title: 'Rajagiriya Flyover Halt',
+          plate: 'Route 177 Stop',
+          type: 'passenger-halt',
+          crowd: '3',
+          status: 'Kollupitiya (3)',
+        },
+      ];
+    }
+  };
+
   // Compile all markers for the GoogleMap component
   const sameRouteBuses = getSameRouteBuses();
+  const passengerHalts = getPassengerHalts();
   const allMarkers: BusMarker[] = [
     {
       id: 'driver-self',
@@ -236,6 +309,7 @@ export default function Tracker() {
       crowd: 'Medium',
     },
     ...sameRouteBuses,
+    ...passengerHalts,
     ...incidents,
   ];
 
@@ -506,6 +580,26 @@ export default function Tracker() {
                 💡 Colombo Hub Instruction: Adjust speed to maintain optimal passenger spacing interval.
               </Text>
             )}
+          </View>
+
+          {/* Upcoming Passenger Halts HUD */}
+          <Text style={[styles.sectionLabel, themeStyles.textSec, { marginTop: 16 }]}>
+            Upcoming Passenger Halts (Tracking This Bus)
+          </Text>
+          <View style={styles.haltsList}>
+            {passengerHalts.map((halt) => (
+              <View key={halt.id} style={[styles.haltItemCard, themeStyles.sectionBg]}>
+                <View style={styles.haltHeaderRow}>
+                  <Text style={[styles.haltItemName, themeStyles.text]}>🏣 {halt.title}</Text>
+                  <View style={styles.haltTrackingBadge}>
+                    <Text style={styles.haltTrackingText}>👥 {halt.crowd} tracking</Text>
+                  </View>
+                </View>
+                <Text style={styles.haltDestinationsText}>
+                  👉 Heading to: {halt.status}
+                </Text>
+              </View>
+            ))}
           </View>
 
           {/* Quick Broadcast Alert actions */}
@@ -862,5 +956,44 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
+  },
+  haltsList: {
+    gap: 8,
+  },
+  haltItemCard: {
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  haltHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  haltItemName: {
+    fontSize: 13,
+    fontWeight: '800',
+    flex: 1,
+    marginRight: 8,
+  },
+  haltTrackingBadge: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  haltTrackingText: {
+    color: '#D97706',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  haltDestinationsText: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontWeight: '700',
   },
 });

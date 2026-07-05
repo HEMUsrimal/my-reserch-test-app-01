@@ -12,7 +12,7 @@ export interface BusMarker {
   coordinate: LatLng;
   title: string;
   plate: string;
-  type: 'self' | 'same-route' | 'incident';
+  type: 'self' | 'same-route' | 'incident' | 'passenger-halt';
   status?: string;
   crowd?: string;
   alertType?: string;
@@ -222,15 +222,7 @@ export default function GoogleMap({
 
         // Add info window on click
         const infoWindow = new window.google.maps.InfoWindow({
-          content: `
-            <div style="font-family: system-ui, sans-serif; padding: 6px; min-width: 140px; color: #1F2937">
-              <b style="font-size: 13px;">${marker.title}</b>
-              <div style="font-size: 11px; color: #6B7280; margin-top: 2px;">Plate: ${marker.plate}</div>
-              ${marker.crowd ? `<div style="font-size: 11px; margin-top: 4px;"><span style="background-color: #E8F0FE; padding: 2px 6px; border-radius: 4px; color: #2F80ED; font-weight: bold;">👥 ${marker.crowd}</span></div>` : ''}
-              ${marker.status ? `<div style="font-size: 10px; color: #10B981; margin-top: 4px; font-weight: 600;">● ${marker.status}</div>` : ''}
-              ${marker.alertType ? `<div style="font-size: 11px; color: #EF4444; font-weight: bold; margin-top: 6px;">⚠️ Broadcast: ${marker.alertType}</div>` : ''}
-            </div>
-          `
+          content: getMarkerPopupHtml(marker)
         });
 
         mapMarker.addListener('click', () => {
@@ -263,6 +255,29 @@ export default function GoogleMap({
     }
   };
 
+  function getMarkerPopupHtml(marker: BusMarker) {
+    if (marker.type === 'passenger-halt') {
+      return `
+        <div style="font-family: system-ui, sans-serif; padding: 4px; min-width: 160px; color: #1F2937">
+          <b style="font-size: 13px; color: #111827; display: block; margin-bottom: 2px;">🏣 ${marker.title}</b>
+          <div style="font-size: 11px; color: #6B7280; margin-top: 4px;">
+            <span style="font-weight: bold; color: #F59E0B;">👥 ${marker.crowd || '0'} tracking</span> this bus
+          </div>
+          ${marker.status ? `<div style="font-size: 10.5px; color: #374151; margin-top: 6px; background-color: #FFFBEB; padding: 4px 8px; border-radius: 4px; border: 1px solid #FEF3C7; font-weight: 600;">👉 Heading to: ${marker.status}</div>` : ''}
+        </div>
+      `;
+    }
+    return `
+      <div style="font-family: system-ui, sans-serif; padding: 4px; min-width: 140px; color: #1F2937">
+        <b style="font-size: 13px; color: #111827; display: block; margin-bottom: 2px;">${marker.title}</b>
+        <span style="font-size: 11px; color: #6B7280; display: block;">Plate: ${marker.plate}</span>
+        ${marker.crowd ? `<div style="font-size: 10px; margin-top: 6px;"><span style="background-color: #E8F0FE; padding: 2px 6px; border-radius: 4px; color: #2F80ED; font-weight: bold;">👥 ${marker.crowd}</span></div>` : ''}
+        ${marker.status ? `<div style="font-size: 10px; color: #10B981; margin-top: 4px; font-weight: 600;">● ${marker.status}</div>` : ''}
+        ${marker.alertType ? `<div style="font-size: 11px; color: #EF4444; font-weight: bold; margin-top: 6px;">⚠️ Broadcast: ${marker.alertType}</div>` : ''}
+      </div>
+    `;
+  }
+
   function getGooglePinSymbol(marker: BusMarker) {
     // Return custom marker options
     let color = '#2F80ED'; // Default Blue (Self)
@@ -275,6 +290,9 @@ export default function GoogleMap({
     } else if (marker.type === 'incident') {
       color = '#EF4444'; // Red
       scale = 1.2;
+    } else if (marker.type === 'passenger-halt') {
+      color = '#F59E0B'; // Amber/Yellow
+      scale = 1.1;
     }
 
     return {
@@ -405,6 +423,12 @@ export default function GoogleMap({
               <span class="emoji">⚠️</span>
             </div>
           `;
+        } else if (marker.type === 'passenger-halt') {
+          iconHtml = `
+            <div class="marker-pin pin-passenger-halt">
+              <span class="emoji">👥</span>
+            </div>
+          `;
         }
 
         const customIcon = L.divIcon({
@@ -417,17 +441,7 @@ export default function GoogleMap({
 
         const leafletMarker = L.marker(latlng, { icon: customIcon }).addTo(map);
 
-        const popupContent = `
-          <div style="font-family: system-ui, sans-serif; padding: 2px; min-width: 140px; color: #1F2937">
-            <b style="font-size: 13px; color: #111827; display: block; margin-bottom: 2px;">${marker.title}</b>
-            <span style="font-size: 11px; color: #6B7280; display: block;">Plate: ${marker.plate}</span>
-            ${marker.crowd ? `<div style="font-size: 10px; margin-top: 6px;"><span style="background-color: #E8F0FE; padding: 2px 6px; border-radius: 4px; color: #2F80ED; font-weight: bold;">👥 ${marker.crowd}</span></div>` : ''}
-            ${marker.status ? `<div style="font-size: 10px; color: #10B981; margin-top: 4px; font-weight: 600;">● ${marker.status}</div>` : ''}
-            ${marker.alertType ? `<div style="font-size: 11px; color: #EF4444; font-weight: bold; margin-top: 6px;">⚠️ Broadcast: ${marker.alertType}</div>` : ''}
-          </div>
-        `;
-
-        leafletMarker.bindPopup(popupContent);
+        leafletMarker.bindPopup(getMarkerPopupHtml(marker));
         leafletMarkersRef.current[marker.id] = leafletMarker;
       }
     });
@@ -560,6 +574,9 @@ export default function GoogleMap({
             }
             .pin-incident {
               background: #EF4444;
+            }
+            .pin-passenger-halt {
+              background: #F59E0B;
             }
             .marker-pin .emoji {
               transform: rotate(45deg);

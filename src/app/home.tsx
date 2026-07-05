@@ -59,8 +59,8 @@ export default function Home() {
     if (fuelLevel <= 15 && !fuelNotified.current) {
       Notifications.scheduleNotificationAsync({
         content: {
-          title: "⚠️ CRITICAL ALERT: Low Fuel",
-          body: `Fuel level is critically low (${fuelLevel}%)! Please proceed to the nearest station immediately.`,
+          title: "⚠️ Fuel Critical",
+          body: `Fuel level is critically low (${fuelLevel}%)! Please route to the nearest CEYPETCO or LIOC filling station.`,
           sound: true,
         },
         trigger: null,
@@ -172,8 +172,48 @@ export default function Home() {
           </TouchableOpacity>
         </View>
 
+        {/* Quick Driver Action Panel */}
+        <Text style={[styles.sectionHeading, themeStyles.text, { marginTop: 24 }]}>Console Quick Actions</Text>
+        <View style={styles.quickActionsGrid}>
+          <TouchableOpacity 
+            style={[styles.actionCard, themeStyles.cardBg, themeStyles.border]}
+            onPress={() => router.push('/analytics')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionEmoji}>📊</Text>
+            <Text style={[styles.actionLabel, themeStyles.text]}>Analytics</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionCard, themeStyles.cardBg, themeStyles.border]}
+            onPress={() => router.push('/diagnostics')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionEmoji}>⚙️</Text>
+            <Text style={[styles.actionLabel, themeStyles.text]}>Telemetry</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionCard, themeStyles.cardBg, themeStyles.border]}
+            onPress={() => router.push('/break')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionEmoji}>☕</Text>
+            <Text style={[styles.actionLabel, themeStyles.text]}>Tea Break</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionCard, themeStyles.cardBg, themeStyles.border]}
+            onPress={() => router.push('/chat')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionEmoji}>📡</Text>
+            <Text style={[styles.actionLabel, themeStyles.text]}>Comms Hub</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Fleet Metrics Grid */}
-        <Text style={[styles.sectionHeading, themeStyles.text]}>Shift Performance Metrics</Text>
+        <Text style={[styles.sectionHeading, themeStyles.text, { marginTop: 24 }]}>Shift Performance Metrics</Text>
         <View style={styles.metricsGrid}>
           {stats.map((stat) => (
             <View key={stat.label} style={[styles.metricCard, themeStyles.cardBg, themeStyles.border]}>
@@ -380,6 +420,29 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 12,
     letterSpacing: -0.2,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  actionCard: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionEmoji: {
+    fontSize: 22,
+    marginBottom: 6,
+  },
+  actionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   metricsGrid: {
     flexDirection: 'row',

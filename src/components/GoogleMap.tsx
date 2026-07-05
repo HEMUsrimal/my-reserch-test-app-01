@@ -13,7 +13,7 @@ export interface BusMarker {
   coordinate: LatLng;
   title: string;
   plate: string;
-  type: 'self' | 'same-route' | 'incident';
+  type: 'self' | 'same-route' | 'incident' | 'passenger-halt';
   status?: string;
   crowd?: string;
   alertType?: string;
@@ -62,6 +62,8 @@ export default function GoogleMap({
         style={styles.map}
         showsTraffic={showTraffic}
         customMapStyle={mapStyle}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
         initialRegion={{
           latitude: center.latitude,
           longitude: center.longitude,
@@ -84,6 +86,7 @@ export default function GoogleMap({
           let pinColor = '#2F80ED'; // Default Blue (Self)
           if (marker.type === 'same-route') pinColor = '#10B981'; // Green
           if (marker.type === 'incident') pinColor = '#EF4444'; // Red
+          if (marker.type === 'passenger-halt') pinColor = '#F59E0B'; // Amber
 
           return (
             <Marker
@@ -98,16 +101,28 @@ export default function GoogleMap({
             >
               <Callout tooltip>
                 <View style={styles.calloutBubble}>
-                  <Text style={styles.calloutTitle}>{marker.title}</Text>
-                  <Text style={styles.calloutSub}>Plate: {marker.plate}</Text>
-                  {marker.crowd && (
-                    <Text style={styles.calloutCrowd}>👥 {marker.crowd} Capacity</Text>
-                  )}
-                  {marker.status && (
-                    <Text style={styles.calloutStatus}>● {marker.status}</Text>
-                  )}
-                  {marker.alertType && (
-                    <Text style={styles.calloutAlert}>⚠️ Alert: {marker.alertType}</Text>
+                  {marker.type === 'passenger-halt' ? (
+                    <>
+                      <Text style={styles.calloutTitle}>🏣 {marker.title}</Text>
+                      <Text style={styles.calloutCrowd}>👥 {marker.crowd || '0'} tracking bus</Text>
+                      {marker.status && (
+                        <Text style={styles.calloutStatus}>👉 Heading to: {marker.status}</Text>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.calloutTitle}>{marker.title}</Text>
+                      <Text style={styles.calloutSub}>Plate: {marker.plate}</Text>
+                      {marker.crowd && (
+                        <Text style={styles.calloutCrowd}>👥 {marker.crowd} Capacity</Text>
+                      )}
+                      {marker.status && (
+                        <Text style={styles.calloutStatus}>● {marker.status}</Text>
+                      )}
+                      {marker.alertType && (
+                        <Text style={styles.calloutAlert}>⚠️ Alert: {marker.alertType}</Text>
+                      )}
+                    </>
                   )}
                 </View>
               </Callout>
