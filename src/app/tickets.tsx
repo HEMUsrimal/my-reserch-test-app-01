@@ -41,7 +41,7 @@ export default function Tickets() {
         });
         return;
       }
-      const names = ['Abebe Kebede', 'Selamawit Alene', 'Yared Birhanu', 'Tsion Tilahun', 'Michael Getachew'];
+      const names = ['Kasun Perera', 'Sanduni Silva', 'Nuwan Jayasinghe', 'Chamari Fernando', 'Dilshan Rathnayake'];
       const randomName = names[Math.floor(Math.random() * names.length)];
       setPassengerCount((prev) => prev + 1);
       setScanResult({

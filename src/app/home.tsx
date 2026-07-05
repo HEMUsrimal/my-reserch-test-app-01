@@ -1,6 +1,6 @@
 // src/app/home.tsx
 import { useRouter } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -11,6 +11,17 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const { width } = Dimensions.get('window');
 
@@ -23,6 +34,45 @@ export default function Home() {
   // Shift state
   const [isShiftActive, setIsShiftActive] = useState<boolean>(true);
   const [shiftSeconds, setShiftSeconds] = useState<number>(9900); // starts at 2h 45m
+
+  // Fuel Management State
+  const [fuelLevel, setFuelLevel] = useState<number>(100);
+  const fuelNotified = useRef<boolean>(false);
+
+  // Notification Permissions
+  useEffect(() => {
+    (async () => {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        console.warn('Failed to get push token for push notification!');
+      }
+    })();
+  }, []);
+
+  // Monitor Fuel Level
+  useEffect(() => {
+    if (fuelLevel <= 15 && !fuelNotified.current) {
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: "⚠️ CRITICAL ALERT: Low Fuel",
+          body: `Fuel level is critically low (${fuelLevel}%)! Please proceed to the nearest station immediately.`,
+          sound: true,
+        },
+        trigger: null,
+      });
+      fuelNotified.current = true;
+    } else if (fuelLevel > 15) {
+      fuelNotified.current = false;
+    }
+  }, [fuelLevel]);
+
+  const simulateFuelDrop = () => setFuelLevel(prev => Math.max(0, prev - 25));
+  const refuelVehicle = () => setFuelLevel(100);
 
   // Format seconds to hh:mm:ss
   const formatTime = (totalSeconds: number) => {
@@ -84,7 +134,7 @@ export default function Home() {
             </View>
             <View style={{ marginLeft: 12 }}>
               <Text style={[styles.profileName, themeStyles.text]}>John Cena</Text>
-              <Text style={styles.profileLocation}>🪪 ID: #DRV-1209 • Route 12 Driver</Text>
+              <Text style={styles.profileLocation}>🪪 ID: #DRV-LK772 • Route 138 Driver</Text>
             </View>
           </View>
           <TouchableOpacity 
@@ -104,7 +154,7 @@ export default function Home() {
                 {isShiftActive ? 'ACTIVE DUTY SHIFT' : 'SHIFT OFFLINE'}
               </Text>
             </View>
-            <Text style={[styles.shiftBusDetails, themeStyles.textSec]}>Vehicle: Bus 12-A (ET-3-1120)</Text>
+            <Text style={[styles.shiftBusDetails, themeStyles.textSec]}>Vehicle: Bus 138-A (WP ND-8842)</Text>
           </View>
 
           <Text style={[styles.shiftClock, themeStyles.text]}>
@@ -147,12 +197,34 @@ export default function Home() {
           ))}
         </View>
 
+        {/* Fuel Management UI */}
+        <Text style={[styles.sectionHeading, themeStyles.text, { marginTop: 24 }]}>Fuel Management</Text>
+        <View style={[styles.fuelCard, themeStyles.cardBg, themeStyles.border]}>
+          <View style={styles.fuelHeaderRow}>
+            <Text style={[styles.fuelTitle, themeStyles.text]}>Current Fuel Level</Text>
+            <Text style={[styles.fuelPercent, fuelLevel <= 15 ? { color: '#EF4444' } : { color: '#10B981' }]}>
+              {fuelLevel}%
+            </Text>
+          </View>
+          <View style={styles.fuelBarBackground}>
+            <View style={[styles.fuelBarFill, { width: `${fuelLevel}%`, backgroundColor: fuelLevel <= 15 ? '#EF4444' : '#10B981' }]} />
+          </View>
+          <View style={styles.fuelActions}>
+            <TouchableOpacity style={styles.fuelBtnSim} onPress={simulateFuelDrop}>
+              <Text style={styles.fuelBtnText}>Simulate Drop</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.fuelBtnRefill} onPress={refuelVehicle}>
+              <Text style={styles.fuelBtnTextRefill}>Refuel ⛽</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Dispatch Bulletins */}
         <Text style={[styles.sectionHeading, themeStyles.text]}>Dispatch Bulletins</Text>
         <View style={[styles.bulletinCard, themeStyles.bulletinBg]}>
           <Text style={styles.bulletinTitle}>⚠️ Road Alerts & Delay Warning</Text>
           <Text style={styles.bulletinContent}>
-            Heavy traffic jam reported at the Piassa roundabout. Drivers on Route 12 are advised to divert via Churchill Road if spacing headway allows.
+            Heavy traffic jam reported at the Maharagama junction. Drivers on Route 138 are advised to divert via High Level Road bypass if spacing headway allows.
           </Text>
           <View style={styles.bulletinDivider} />
           <Text style={styles.bulletinMeta}>Issued by: Command Center • 14 mins ago</Text>
@@ -353,6 +425,65 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F3F4F6',
   },
   checkItemText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  fuelCard: {
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+  },
+  fuelHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  fuelTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  fuelPercent: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  fuelBarBackground: {
+    height: 12,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  fuelBarFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  fuelActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  fuelBtnSim: {
+    flex: 1,
+    backgroundColor: '#374151',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  fuelBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  fuelBtnRefill: {
+    flex: 1,
+    backgroundColor: '#10B981',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  fuelBtnTextRefill: {
+    color: '#FFF',
     fontSize: 12,
     fontWeight: '700',
   },
